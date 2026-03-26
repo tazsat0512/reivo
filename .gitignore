@@ -10,3 +10,6 @@ dist/
 .DS_Store
 coverage/
 .vercel
+.claude/
+CLAUDE.md
+wrangler.toml.local
