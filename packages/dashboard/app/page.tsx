@@ -195,9 +195,9 @@ client = OpenAI(
                 </div>
                 <h3 className="mt-4 text-lg font-semibold">Smart Model Routing</h3>
                 <p className="mt-2 text-sm text-muted-foreground">
-                  タスクが求める精度やコストに応じて、最適なモデルへ自動でルーティング。
-                  高い精度が必要なリクエストはフルモデルを維持し、
-                  軽量なタスクはコスト効率の良いモデルへ。判定はリアルタイム、レイテンシ増加ゼロ。
+                  Automatically routes each request to the optimal model based on task complexity.
+                  High-precision requests stay on the full model.
+                  Lightweight tasks go to cost-efficient alternatives. Real-time analysis, zero latency added.
                 </p>
               </div>
 
@@ -254,8 +254,8 @@ client = OpenAI(
           <div className="mx-auto max-w-5xl px-6">
             <h2 className="text-center text-3xl font-bold">How Smart Routing Works</h2>
             <p className="mx-auto mt-4 max-w-2xl text-center text-muted-foreground">
-              Reivoはリクエストの内容をリアルタイムに解析し、タスクの複雑さに応じて最適なモデルを自動選択します。
-              高精度が必要な処理はそのまま。軽量なタスクはコスト効率の良いモデルへ。
+              Reivo analyzes every request in real-time and selects the optimal model based on task complexity.
+              Complex tasks stay on the full model. Simple ones get routed to a cheaper alternative.
             </p>
 
             <div className="mt-12 grid gap-6 md:grid-cols-3">
@@ -265,9 +265,9 @@ client = OpenAI(
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                   </svg>
                 </div>
-                <h3 className="mt-4 font-semibold">リクエスト解析</h3>
+                <h3 className="mt-4 font-semibold">Request Analysis</h3>
                 <p className="mt-2 text-sm text-muted-foreground">
-                  タスクの複雑さ・求められる精度をリアルタイムで判定。レイテンシ増加ゼロ。
+                  Evaluates task complexity and required precision in real-time. Zero latency added.
                 </p>
               </div>
               <div className="rounded-lg border bg-card p-6 text-center">
@@ -276,9 +276,9 @@ client = OpenAI(
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
                   </svg>
                 </div>
-                <h3 className="mt-4 font-semibold">自動ルーティング</h3>
+                <h3 className="mt-4 font-semibold">Auto Routing</h3>
                 <p className="mt-2 text-sm text-muted-foreground">
-                  高精度が必要ならフルモデル維持。軽量タスクは自動でコスト最適なモデルへ。
+                  Keeps the full model for high-precision tasks. Routes lightweight tasks to cost-optimal models automatically.
                 </p>
               </div>
               <div className="rounded-lg border bg-card p-6 text-center">
@@ -287,16 +287,16 @@ client = OpenAI(
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
                 </div>
-                <h3 className="mt-4 font-semibold">全件ログ</h3>
+                <h3 className="mt-4 font-semibold">Full Audit Log</h3>
                 <p className="mt-2 text-sm text-muted-foreground">
-                  どのリクエストがどのモデルに送られたか、判定理由まで全てダッシュボードで確認可能。
+                  See exactly which model handled each request and why. Every routing decision is logged in your dashboard.
                 </p>
               </div>
             </div>
 
             <p className="mt-8 text-center text-sm text-muted-foreground">
-              ルーティングの積極度は Settings で <strong>conservative</strong> / <strong>aggressive</strong> / <strong>off</strong> を切り替え可能。
-              いつでもオフにできます。
+              Switch between <strong>conservative</strong>, <strong>aggressive</strong>, or <strong>off</strong> modes anytime in Settings.
+              You&apos;re always in control.
             </p>
           </div>
         </section>
