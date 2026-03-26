@@ -40,10 +40,20 @@ openai.all('/openai/*', async (c) => {
   const headers = openaiProvider.buildHeaders(providerKey, c.req.raw.headers);
   headers.set('Content-Type', 'application/json');
 
+  // When the request is streaming, inject stream_options to ensure OpenAI
+  // returns a final chunk containing token usage data.
+  let upstreamBody = body;
+  if (reqTelemetry.isStreaming && parsedBody && typeof parsedBody === 'object') {
+    const patched = { ...(parsedBody as Record<string, unknown>) };
+    const existingOpts = (patched.stream_options ?? {}) as Record<string, unknown>;
+    patched.stream_options = { ...existingOpts, include_usage: true };
+    upstreamBody = JSON.stringify(patched);
+  }
+
   const upstreamResponse = await fetch(upstreamUrl, {
     method: c.req.method,
     headers,
-    body: c.req.method !== 'GET' ? body : undefined,
+    body: c.req.method !== 'GET' ? upstreamBody : undefined,
   });
 
   const latencyMs = Date.now() - startTime;

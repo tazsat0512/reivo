@@ -340,7 +340,7 @@ export const appRouter = t.router({
       list.push({
         id: crypto.randomUUID(),
         label: input.label,
-        key: input.key,
+        key: input.key.replace(/\s+/g, ''),
         isDefault: isFirst,
       });
       await saveProviderKeys(ctx.userId, keys);
