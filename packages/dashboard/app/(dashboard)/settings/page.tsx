@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { Button } from '../../../components/ui/button';
 import {
   Card,
   CardContent,
@@ -8,21 +9,51 @@ import {
   CardHeader,
   CardTitle,
 } from '../../../components/ui/card';
+import { Input } from '../../../components/ui/input';
+import { Label } from '../../../components/ui/label';
+import { Skeleton } from '../../../components/ui/skeleton';
+import { useToast } from '../../../components/ui/toast';
 import { trpc } from '../../../lib/trpc/client';
+
+function SettingsSkeleton() {
+  return (
+    <div className="space-y-8">
+      <div>
+        <Skeleton className="h-9 w-28" />
+        <Skeleton className="mt-2 h-5 w-56" />
+      </div>
+      {Array.from({ length: 4 }).map((_, i) => (
+        <Card key={i}>
+          <CardHeader>
+            <Skeleton className="h-6 w-32" />
+            <Skeleton className="h-4 w-64" />
+          </CardHeader>
+          <CardContent>
+            <Skeleton className="h-10 w-full max-w-md" />
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
 
 export default function SettingsPage() {
   const { data: settings, isLoading } = trpc.getSettings.useQuery();
   const { data: providerStatus } = trpc.getProviderKeyStatus.useQuery();
   const utils = trpc.useUtils();
+  const { toast } = useToast();
 
   const generateApiKey = trpc.generateApiKey.useMutation({
     onSuccess: () => utils.getSettings.invalidate(),
+    onError: () => toast({ title: 'Failed to generate API key', variant: 'destructive' }),
   });
   const updateSettings = trpc.updateSettings.useMutation({
     onSuccess: () => {
       utils.getSettings.invalidate();
       utils.getProviderKeyStatus.invalidate();
+      toast({ title: 'Settings saved' });
     },
+    onError: () => toast({ title: 'Failed to save settings', variant: 'destructive' }),
   });
 
   const [newApiKey, setNewApiKey] = useState<string | null>(null);
@@ -37,7 +68,7 @@ export default function SettingsPage() {
   const [showConfirm, setShowConfirm] = useState(false);
 
   if (isLoading) {
-    return <div className="animate-pulse">Loading...</div>;
+    return <SettingsSkeleton />;
   }
 
   const handleGenerateKey = async () => {
@@ -51,6 +82,7 @@ export default function SettingsPage() {
     if (newApiKey) {
       await navigator.clipboard.writeText(newApiKey);
       setCopied(true);
+      toast({ title: 'API key copied to clipboard' });
     }
   };
 
@@ -80,13 +112,9 @@ export default function SettingsPage() {
                   <code className="flex-1 rounded bg-muted px-3 py-2 font-mono text-sm break-all">
                     {newApiKey}
                   </code>
-                  <button
-                    type="button"
-                    onClick={handleCopyKey}
-                    className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 whitespace-nowrap"
-                  >
+                  <Button onClick={handleCopyKey} size="sm">
                     {copied ? 'Copied!' : 'Copy'}
-                  </button>
+                  </Button>
                 </div>
               </div>
               <p className="text-sm text-muted-foreground">
@@ -111,30 +139,21 @@ export default function SettingsPage() {
                       ? 'This will invalidate your current key. Continue?'
                       : 'Generate a new API key?'}
                   </p>
-                  <button
-                    type="button"
+                  <Button
                     onClick={handleGenerateKey}
                     disabled={generateApiKey.isPending}
-                    className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+                    size="sm"
                   >
                     {generateApiKey.isPending ? 'Generating...' : 'Confirm'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowConfirm(false)}
-                    className="rounded-md border px-4 py-2 text-sm font-medium hover:bg-muted"
-                  >
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => setShowConfirm(false)}>
                     Cancel
-                  </button>
+                  </Button>
                 </div>
               ) : (
-                <button
-                  type="button"
-                  onClick={() => setShowConfirm(true)}
-                  className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-                >
+                <Button onClick={() => setShowConfirm(true)}>
                   {settings?.apiKeyHash ? 'Regenerate Key' : 'Generate API Key'}
-                </button>
+                </Button>
               )}
             </div>
           )}
@@ -153,9 +172,9 @@ export default function SettingsPage() {
           <div className="space-y-4">
             {(['openai', 'anthropic', 'google'] as const).map((provider) => (
               <div key={provider} className="flex items-center gap-4">
-                <label className="w-24 text-sm font-medium capitalize">{provider}</label>
+                <Label className="w-24 capitalize">{provider}</Label>
                 <div className="flex flex-1 items-center gap-2">
-                  <input
+                  <Input
                     type="password"
                     placeholder={
                       providerStatus?.[provider]
@@ -166,7 +185,6 @@ export default function SettingsPage() {
                     onChange={(e) =>
                       setProviderKeys((prev) => ({ ...prev, [provider]: e.target.value }))
                     }
-                    className="flex-1 rounded-md border bg-background px-3 py-2 text-sm"
                   />
                   {providerStatus?.[provider] && (
                     <span className="text-xs text-green-600 font-medium whitespace-nowrap">
@@ -176,31 +194,26 @@ export default function SettingsPage() {
                 </div>
               </div>
             ))}
-            <div className="flex gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  const keys: Record<string, string | null> = {};
-                  for (const [p, v] of Object.entries(providerKeys)) {
-                    if (v) keys[p] = v;
-                  }
-                  if (Object.keys(keys).length === 0) return;
-                  updateSettings.mutate(
-                    { providerKeys: keys },
-                    {
-                      onSuccess: () => setProviderKeys({ openai: '', anthropic: '', google: '' }),
-                    },
-                  );
-                }}
-                disabled={
-                  updateSettings.isPending ||
-                  !Object.values(providerKeys).some((v) => v)
+            <Button
+              onClick={() => {
+                const keys: Record<string, string | null> = {};
+                for (const [p, v] of Object.entries(providerKeys)) {
+                  if (v) keys[p] = v;
                 }
-                className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-              >
-                {updateSettings.isPending ? 'Saving...' : 'Save Keys'}
-              </button>
-            </div>
+                if (Object.keys(keys).length === 0) return;
+                updateSettings.mutate(
+                  { providerKeys: keys },
+                  {
+                    onSuccess: () => setProviderKeys({ openai: '', anthropic: '', google: '' }),
+                  },
+                );
+              }}
+              disabled={
+                updateSettings.isPending || !Object.values(providerKeys).some((v) => v)
+              }
+            >
+              {updateSettings.isPending ? 'Saving...' : 'Save Keys'}
+            </Button>
           </div>
         </CardContent>
       </Card>
@@ -215,29 +228,27 @@ export default function SettingsPage() {
         </CardHeader>
         <CardContent>
           <div className="flex items-center gap-4">
-            <div className="flex items-center">
-              <span className="text-muted-foreground mr-2">$</span>
-              <input
+            <div className="flex items-center gap-2">
+              <span className="text-muted-foreground">$</span>
+              <Input
                 type="number"
                 placeholder={settings?.budgetLimitUsd?.toString() ?? 'No limit'}
                 value={budgetLimit}
                 onChange={(e) => setBudgetLimit(e.target.value)}
-                className="rounded-md border bg-background px-3 py-2 text-sm w-32"
+                className="w-32"
                 step="0.01"
                 min="0"
               />
             </div>
-            <button
-              type="button"
+            <Button
               onClick={() => {
                 updateSettings.mutate({
                   budgetLimitUsd: budgetLimit ? parseFloat(budgetLimit) : null,
                 });
               }}
-              className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
             >
               Save
-            </button>
+            </Button>
           </div>
         </CardContent>
       </Card>
@@ -252,24 +263,22 @@ export default function SettingsPage() {
         </CardHeader>
         <CardContent>
           <div className="flex items-center gap-4">
-            <input
+            <Input
               type="url"
               placeholder={settings?.slackWebhookUrl ?? 'https://hooks.slack.com/services/...'}
               value={slackUrl}
               onChange={(e) => setSlackUrl(e.target.value)}
-              className="rounded-md border bg-background px-3 py-2 text-sm flex-1"
+              className="flex-1"
             />
-            <button
-              type="button"
+            <Button
               onClick={() => {
                 updateSettings.mutate({
                   slackWebhookUrl: slackUrl || null,
                 });
               }}
-              className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
             >
               Save
-            </button>
+            </Button>
           </div>
         </CardContent>
       </Card>

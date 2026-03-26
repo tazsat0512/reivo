@@ -2,14 +2,42 @@
 
 import Link from 'next/link';
 import { Card, CardContent } from '../../../components/ui/card';
+import { Skeleton } from '../../../components/ui/skeleton';
 import { trpc } from '../../../lib/trpc/client';
 import { formatCost, formatDate, formatNumber } from '../../../lib/utils';
+
+function SessionsSkeleton() {
+  return (
+    <div className="space-y-8">
+      <div>
+        <Skeleton className="h-9 w-32" />
+        <Skeleton className="mt-2 h-5 w-52" />
+      </div>
+      <Card>
+        <CardContent className="p-0">
+          <div className="p-4 space-y-4">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-4">
+                <Skeleton className="h-5 w-28" />
+                <Skeleton className="h-5 w-24" />
+                <Skeleton className="h-5 w-16 ml-auto" />
+                <Skeleton className="h-5 w-12" />
+                <Skeleton className="h-6 w-16 rounded-full" />
+                <Skeleton className="h-5 w-28" />
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
 
 export default function SessionsPage() {
   const { data, isLoading } = trpc.getSessions.useQuery({ limit: 50, offset: 0 });
 
   if (isLoading) {
-    return <div className="animate-pulse">Loading...</div>;
+    return <SessionsSkeleton />;
   }
 
   return (

@@ -2,14 +2,46 @@
 
 import { CostTrendChart } from '../../../components/charts/cost-trend';
 import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card';
+import { Skeleton } from '../../../components/ui/skeleton';
 import { trpc } from '../../../lib/trpc/client';
 import { formatCost, formatNumber } from '../../../lib/utils';
+
+function OverviewSkeleton() {
+  return (
+    <div className="space-y-8">
+      <div>
+        <Skeleton className="h-9 w-40" />
+        <Skeleton className="mt-2 h-5 w-64" />
+      </div>
+      <div className="grid gap-4 md:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <Card key={i}>
+            <CardHeader className="pb-2">
+              <Skeleton className="h-4 w-24" />
+            </CardHeader>
+            <CardContent>
+              <Skeleton className="h-8 w-20" />
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+      <Card>
+        <CardHeader>
+          <Skeleton className="h-6 w-28" />
+        </CardHeader>
+        <CardContent>
+          <Skeleton className="h-[300px] w-full" />
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
 
 export default function OverviewPage() {
   const { data, isLoading } = trpc.getOverview.useQuery({ days: 30 });
 
   if (isLoading) {
-    return <div className="animate-pulse">Loading...</div>;
+    return <OverviewSkeleton />;
   }
 
   const summary = data?.summary;

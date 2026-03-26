@@ -5,6 +5,7 @@ import {
   PRO_PLAN_PRICE_USD,
   PRO_PLAN_REQUEST_LIMIT,
 } from '@tokenscope/shared';
+import { Button } from '../../../components/ui/button';
 import {
   Card,
   CardContent,
@@ -12,14 +13,48 @@ import {
   CardHeader,
   CardTitle,
 } from '../../../components/ui/card';
+import { Skeleton } from '../../../components/ui/skeleton';
 import { trpc } from '../../../lib/trpc/client';
 import { formatNumber } from '../../../lib/utils';
+
+function BillingSkeleton() {
+  return (
+    <div className="space-y-8">
+      <div>
+        <Skeleton className="h-9 w-24" />
+        <Skeleton className="mt-2 h-5 w-56" />
+      </div>
+      <div className="grid gap-6 md:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <Skeleton className="h-6 w-28" />
+            <Skeleton className="h-4 w-20" />
+          </CardHeader>
+          <CardContent>
+            <Skeleton className="h-9 w-24" />
+            <Skeleton className="mt-2 h-4 w-40" />
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <Skeleton className="h-6 w-36" />
+            <Skeleton className="h-4 w-40" />
+          </CardHeader>
+          <CardContent>
+            <Skeleton className="mt-2 h-3 w-full rounded-full" />
+            <Skeleton className="mt-2 h-4 w-20" />
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
 
 export default function BillingPage() {
   const { data: settings, isLoading } = trpc.getSettings.useQuery();
 
   if (isLoading) {
-    return <div className="animate-pulse">Loading...</div>;
+    return <BillingSkeleton />;
   }
 
   const plan = settings?.plan ?? 'free';
@@ -80,17 +115,16 @@ export default function BillingPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <button
-              type="button"
+            <Button
+              size="lg"
               onClick={async () => {
                 const res = await fetch('/api/create-checkout', { method: 'POST' });
                 const { url } = await res.json();
                 window.location.href = url;
               }}
-              className="rounded-md bg-primary px-6 py-3 text-sm font-medium text-primary-foreground hover:bg-primary/90"
             >
               Upgrade to Pro - ${PRO_PLAN_PRICE_USD}/mo
-            </button>
+            </Button>
           </CardContent>
         </Card>
       )}

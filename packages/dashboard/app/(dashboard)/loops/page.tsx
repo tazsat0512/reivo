@@ -1,14 +1,42 @@
 'use client';
 
 import { Card, CardContent } from '../../../components/ui/card';
+import { Skeleton } from '../../../components/ui/skeleton';
 import { trpc } from '../../../lib/trpc/client';
 import { formatDate } from '../../../lib/utils';
+
+function LoopsSkeleton() {
+  return (
+    <div className="space-y-8">
+      <div>
+        <Skeleton className="h-9 w-40" />
+        <Skeleton className="mt-2 h-5 w-64" />
+      </div>
+      <Card>
+        <CardContent className="p-0">
+          <div className="p-4 space-y-4">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-4">
+                <Skeleton className="h-5 w-32" />
+                <Skeleton className="h-5 w-24" />
+                <Skeleton className="h-5 w-20" />
+                <Skeleton className="h-5 w-28" />
+                <Skeleton className="h-5 w-12 ml-auto" />
+                <Skeleton className="h-5 w-12" />
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
 
 export default function LoopsPage() {
   const { data, isLoading } = trpc.getLoopHistory.useQuery({ limit: 50 });
 
   if (isLoading) {
-    return <div className="animate-pulse">Loading...</div>;
+    return <LoopsSkeleton />;
   }
 
   return (
