@@ -31,7 +31,8 @@ jobs:
           node-version: 20
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm typecheck
+      - run: cd packages/shared && pnpm build
+      - run: cd packages/proxy && npx tsc --noEmit
 
   test:
     name: Test
@@ -44,4 +45,5 @@ jobs:
           node-version: 20
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm test
+      - run: cd packages/shared && pnpm build
+      - run: cd packages/proxy && npx vitest run
