@@ -1,6 +1,7 @@
 'use client';
 
 import { CostTrendChart } from '../../../components/charts/cost-trend';
+import { OnboardingChecklist } from '../../../components/onboarding';
 import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card';
 import { Skeleton } from '../../../components/ui/skeleton';
 import { trpc } from '../../../lib/trpc/client';
@@ -52,6 +53,8 @@ export default function OverviewPage() {
         <h1 className="text-3xl font-bold">Overview</h1>
         <p className="text-muted-foreground">Your AI agent cost dashboard</p>
       </div>
+
+      <OnboardingChecklist />
 
       <div className="grid gap-4 md:grid-cols-4">
         <Card>

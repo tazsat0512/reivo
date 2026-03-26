@@ -140,6 +140,37 @@ export const appRouter = t.router({
       return loops;
     }),
 
+  getOnboardingStatus: authedProcedure.query(async ({ ctx }) => {
+    const user = await db.select().from(users).where(eq(users.id, ctx.userId)).limit(1);
+    if (!user[0]) return { hasApiKey: false, hasProviderKey: false, hasFirstRequest: false };
+
+    const hasApiKey = !!user[0].apiKeyHash;
+
+    let hasProviderKey = false;
+    if (user[0].providerKeysEncrypted && user[0].providerKeysEncrypted !== '{}') {
+      try {
+        const decrypted = await decrypt(user[0].providerKeysEncrypted);
+        const keys = JSON.parse(decrypted);
+        hasProviderKey = Object.values(keys).some((v) => !!v);
+      } catch {
+        try {
+          const keys = JSON.parse(user[0].providerKeysEncrypted);
+          hasProviderKey = Object.values(keys).some((v) => !!v);
+        } catch {
+          hasProviderKey = false;
+        }
+      }
+    }
+
+    const reqCount = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(requestLogs)
+      .where(eq(requestLogs.userId, ctx.userId));
+    const hasFirstRequest = (reqCount[0]?.count ?? 0) > 0;
+
+    return { hasApiKey, hasProviderKey, hasFirstRequest };
+  }),
+
   getSettings: authedProcedure.query(async ({ ctx }) => {
     const user = await db.select().from(users).where(eq(users.id, ctx.userId)).limit(1);
     return user[0] ?? null;
