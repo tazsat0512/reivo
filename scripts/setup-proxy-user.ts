@@ -19,8 +19,13 @@ const users = sqliteTable('users', {
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date()),
 });
 
-const USER_ID = 'REDACTED_USER_ID';
-const ANTHROPIC_KEY = 'REDACTED_ANTHROPIC_KEY';
+const USER_ID = process.env.CLERK_USER_ID;
+const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY;
+
+if (!USER_ID || !ANTHROPIC_KEY) {
+  console.error('Required environment variables: CLERK_USER_ID, ANTHROPIC_API_KEY');
+  process.exit(1);
+}
 
 // Generate a Reivo API key
 const RV_API_KEY = `rv_${crypto.randomUUID().replace(/-/g, '')}`;

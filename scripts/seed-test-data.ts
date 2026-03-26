@@ -53,8 +53,13 @@ const loopEvents = sqliteTable('loop_events', {
 });
 
 // --- Config ---
-const USER_ID = 'REDACTED_USER_ID';
-const USER_EMAIL = 'REDACTED_EMAIL';
+const USER_ID = process.env.CLERK_USER_ID;
+const USER_EMAIL = process.env.CLERK_USER_EMAIL;
+
+if (!USER_ID || !USER_EMAIL) {
+  console.error('Required environment variables: CLERK_USER_ID, CLERK_USER_EMAIL');
+  process.exit(1);
+}
 
 const client = createClient({
   url: process.env.TURSO_DATABASE_URL!,
