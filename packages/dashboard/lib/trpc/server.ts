@@ -140,6 +140,69 @@ export const appRouter = t.router({
       return loops;
     }),
 
+  getDefenseStatus: authedProcedure.query(async ({ ctx }) => {
+    const user = await db.select().from(users).where(eq(users.id, ctx.userId)).limit(1);
+    const budgetLimit = user[0]?.budgetLimitUsd ?? null;
+
+    // Calculate total cost from request logs this month
+    const monthStart = new Date();
+    monthStart.setDate(1);
+    monthStart.setHours(0, 0, 0, 0);
+    const costResult = await db
+      .select({ total: sql<number>`coalesce(sum(${requestLogs.costUsd}), 0)` })
+      .from(requestLogs)
+      .where(
+        and(eq(requestLogs.userId, ctx.userId), gte(requestLogs.timestamp, monthStart.getTime())),
+      );
+    const budgetUsed = costResult[0]?.total ?? 0;
+
+    const now = Date.now();
+    const today = now - 24 * 60 * 60 * 1000;
+    const week = now - 7 * 24 * 60 * 60 * 1000;
+
+    const loopsToday = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(loopEvents)
+      .where(and(eq(loopEvents.userId, ctx.userId), gte(loopEvents.detectedAt, today)));
+
+    const loopsWeek = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(loopEvents)
+      .where(and(eq(loopEvents.userId, ctx.userId), gte(loopEvents.detectedAt, week)));
+
+    const blockedToday = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(requestLogs)
+      .where(
+        and(
+          eq(requestLogs.userId, ctx.userId),
+          eq(requestLogs.blocked, true),
+          gte(requestLogs.timestamp, today),
+        ),
+      );
+
+    const blockedWeek = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(requestLogs)
+      .where(
+        and(
+          eq(requestLogs.userId, ctx.userId),
+          eq(requestLogs.blocked, true),
+          gte(requestLogs.timestamp, week),
+        ),
+      );
+
+    return {
+      budgetLimit,
+      budgetUsed,
+      budgetPercent: budgetLimit ? Math.round((budgetUsed / budgetLimit) * 100) : null,
+      loopsToday: loopsToday[0]?.count ?? 0,
+      loopsWeek: loopsWeek[0]?.count ?? 0,
+      blockedToday: blockedToday[0]?.count ?? 0,
+      blockedWeek: blockedWeek[0]?.count ?? 0,
+    };
+  }),
+
   getOnboardingStatus: authedProcedure.query(async ({ ctx }) => {
     const user = await db.select().from(users).where(eq(users.id, ctx.userId)).limit(1);
     if (!user[0]) return { hasApiKey: false, hasProviderKey: false, hasFirstRequest: false };

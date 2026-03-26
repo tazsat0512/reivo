@@ -1,6 +1,7 @@
 'use client';
 
 import { CostTrendChart } from '../../../components/charts/cost-trend';
+import { DefenseStatus } from '../../../components/defense-status';
 import { OnboardingChecklist } from '../../../components/onboarding';
 import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card';
 import { Skeleton } from '../../../components/ui/skeleton';
@@ -55,6 +56,8 @@ export default function OverviewPage() {
       </div>
 
       <OnboardingChecklist />
+
+      <DefenseStatus />
 
       <div className="grid gap-4 md:grid-cols-4">
         <Card>
