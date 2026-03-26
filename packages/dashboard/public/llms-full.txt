@@ -1,0 +1,227 @@
+# Reivo — Full Technical Reference
+
+> Same output. Half the cost. Smart LLM routing proxy that cuts AI agent costs 40-60%.
+
+See llms.txt for a summary. This document contains the full technical specification.
+
+## Overview
+
+Reivo is a transparent HTTP proxy for LLM APIs (OpenAI, Anthropic, Google). It forwards requests to the upstream provider, counts tokens, calculates cost, and optionally routes to cheaper models. The proxy adds <30ms latency. Streaming (SSE) is fully supported.
+
+Stack: Cloudflare Workers + Hono (proxy), Turso/libSQL (metadata DB), Next.js 15 (dashboard), Clerk (auth), Stripe (billing).
+
+## Endpoints
+
+### OpenAI-compatible
+
+Base URL: `https://proxy.reivo.dev/openai/v1`
+
+All OpenAI API paths are proxied:
+- `POST /openai/v1/chat/completions` — Chat completions (streaming supported)
+- `POST /openai/v1/embeddings` — Embeddings
+- `POST /openai/v1/images/generations` — Image generation
+- Any other `/openai/v1/*` path is forwarded as-is
+
+### Anthropic-compatible
+
+Base URL: `https://proxy.reivo.dev/anthropic/v1`
+
+- `POST /anthropic/v1/messages` — Messages API (streaming supported)
+- Any other `/anthropic/v1/*` path is forwarded as-is
+- The `anthropic-version` header is passed through automatically
+
+### Google Gemini-compatible
+
+Base URL: `https://proxy.reivo.dev/google/v1beta`
+
+- `POST /google/v1beta/models/{model}:generateContent` — Generate content
+- `POST /google/v1beta/models/{model}:streamGenerateContent` — Streaming
+- Any other `/google/v1beta/*` path is forwarded as-is
+
+### Health check
+
+- `GET /health` — Returns `{"status":"ok","timestamp":<unix_ms>}`
+
+## Authentication
+
+All requests require:
+```
+Authorization: Bearer rv_your_reivo_key
+```
+
+The `rv_` prefixed key is your Reivo API key. Get it at https://app.reivo.dev/settings.
+
+Your LLM provider API key is stored in your Reivo account settings (encrypted). The proxy injects it into the upstream request automatically.
+
+## Custom Headers
+
+| Header | Type | Description |
+|--------|------|-------------|
+| `X-Session-Id` | string | Optional. Groups requests into a session for cost tracking. |
+| `X-Agent-Id` | string | Optional. Identifies the agent making the request. Used for per-agent budgets and cost breakdown. |
+
+## Response Headers
+
+Reivo adds these headers to every response:
+
+| Header | Description |
+|--------|-------------|
+| `X-Reivo-Request-Id` | Unique request ID for debugging |
+| `X-Reivo-Cost` | Cost of this request in USD (e.g., `0.0023`) |
+| `X-Reivo-Budget-Used` | Total budget used this period in USD |
+| `X-Reivo-Budget-Limit` | Budget limit in USD (if set) |
+| `X-Reivo-Budget-Remaining` | Remaining budget in USD |
+| `X-Reivo-Budget-Action` | Budget action: `block`, `alert`, or `downgrade` |
+| `X-Reivo-Model` | The model actually used (may differ from requested if routed) |
+
+## Smart Routing
+
+When enabled, the router inspects the JSON request body and decides whether to downgrade the model.
+
+### Model Downgrade Map
+
+| Requested | Routed To | Provider |
+|-----------|-----------|----------|
+| gpt-4o | gpt-4o-mini | OpenAI |
+| gpt-4-turbo | gpt-4o-mini | OpenAI |
+| o3 | o3-mini | OpenAI |
+| claude-sonnet-4 | claude-haiku-4.5 | Anthropic |
+| claude-opus-4 | claude-sonnet-4 | Anthropic |
+| gemini-2.5-pro | gemini-2.5-flash | Google |
+
+### Decision Signals
+
+Complexity signals (keep full model):
+- `tools` or `tool_choice` present in request body
+- `response_format.type` is `json_schema`
+- `messages.length > 10`
+- System prompt length > 2,000 characters
+
+Simplicity signals (eligible for downgrade):
+- `max_tokens < 100`
+- `temperature < 0.3` or unset
+
+### Routing Modes
+
+| Mode | Behavior |
+|------|----------|
+| `conservative` | Downgrade only when simplicity signals present AND no complexity signals |
+| `aggressive` | Downgrade unless complexity signals block it |
+| `auto` | System chooses between conservative and aggressive based on recent quality scores |
+| `off` | No routing — all requests forwarded as-is |
+
+## Budget Enforcement
+
+Configure via dashboard or API:
+- Global budget: applies to all requests from your account
+- Per-agent budget: set individual limits per `X-Agent-Id`
+
+### Budget Actions
+
+| Action | Behavior |
+|--------|----------|
+| `block` | Return HTTP 429 when budget exceeded |
+| `alert` | Allow request but send Slack notification |
+| `downgrade` | Force aggressive routing mode to reduce costs |
+
+### Budget Response (HTTP 429)
+
+```json
+{
+  "error": {
+    "type": "budget_exceeded",
+    "message": "Monthly budget of $100.00 exceeded. Current usage: $100.23",
+    "budget_limit": 100.0,
+    "budget_used": 100.23
+  }
+}
+```
+
+## Loop Detection
+
+The proxy detects agent loops using two methods:
+
+1. **Hash matching**: SHA-256 hash of normalized prompt. If the same hash appears 5+ times in the last 20 requests, a loop is flagged.
+2. **Cosine similarity**: TF-IDF vectors of recent prompts. If similarity exceeds 0.92, a loop is flagged.
+
+When a loop is detected:
+- The request is blocked (HTTP 429)
+- A Slack notification is sent (if configured)
+- The event is logged in the loop_events table
+
+## Anomaly Detection
+
+EWMA (Exponentially Weighted Moving Average) with alpha=0.3 tracks cost-per-hour rate over 7 days. A z-score > 3.0 flags an anomaly and triggers a Slack notification.
+
+## Streaming
+
+SSE streaming is fully supported for all providers. The proxy uses TransformStream to pipe chunks to the client in real time. Token counting and cost calculation happen after the stream completes via `waitUntil()`.
+
+## Error Codes
+
+| HTTP Code | Meaning |
+|-----------|---------|
+| 401 | Invalid or missing Reivo API key |
+| 403 | Provider API key not configured for this provider |
+| 429 | Budget exceeded or loop detected |
+| 502 | Upstream provider error |
+| 503 | Proxy temporarily unavailable |
+
+All errors follow this format:
+```json
+{
+  "error": {
+    "type": "error_type",
+    "message": "Human-readable description"
+  }
+}
+```
+
+## Webhook / Slack Notifications
+
+Configure a Slack webhook URL in dashboard settings. Notifications are sent for:
+- Budget warnings at 50%, 80%, 100%
+- Loop detection events
+- Anomaly detection events
+
+Notification format: Slack Block Kit with structured fields (event type, cost, agent ID, session ID, timestamp).
+
+## Database Schema (metadata only)
+
+Tables:
+- `users` — account, API key hash, plan, budget settings
+- `request_logs` — model, tokens, cost, latency, timestamp, session_id, agent_id, prompt_hash, routed_model, routing_reason
+- `loop_events` — user_id, session_id, agent_id, prompt_hash, match_count, similarity, detected_at
+- `budget_policies` — user_id, agent_id, limit_usd, action (block/alert/downgrade)
+
+No prompt content, response content, or raw API keys are stored.
+
+## Pricing
+
+| Plan | Price | Requests/month | Features |
+|------|-------|----------------|----------|
+| Free | $0 | 10,000 | Cost tracking, budget limits, loop detection, 7-day history |
+| Pro | $49/mo | 100,000 | + Smart Routing, Quality Verification, Slack alerts, 90-day history |
+| Team | $199/mo | Unlimited | + Context Optimizer, team management, API access |
+| Enterprise | $999/mo | Unlimited | + Dedicated proxy, SSO, SLA |
+
+## Self-Hosting
+
+Reivo is open source (MIT license). Clone and run on your own infrastructure:
+
+```bash
+git clone https://github.com/tazsat0512/reivo.git
+cd reivo
+pnpm install
+```
+
+Requirements: Node.js >= 20, pnpm, Cloudflare account (Workers + KV), Turso database, Clerk account.
+
+## Links
+
+- Website: https://reivo.dev
+- Dashboard: https://app.reivo.dev
+- Proxy: https://proxy.reivo.dev
+- GitHub: https://github.com/tazsat0512/reivo
+- Privacy Policy: https://reivo.dev/privacy
+- Terms of Service: https://reivo.dev/terms

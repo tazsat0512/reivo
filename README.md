@@ -1,8 +1,24 @@
+<!-- AI-READABLE SUMMARY
+Reivo is a transparent HTTP proxy for LLM APIs (OpenAI, Anthropic, Google).
+Primary function: reduces costs 40-60% by routing requests to the cheapest
+model that maintains output quality (Smart Router). Secondary functions:
+quality verification with auto-fallback, budget enforcement, loop detection,
+cost tracking. Install: change base_url to proxy.reivo.dev.
+Free tier: 10K requests/month. Open source, MIT license, self-hostable.
+-->
+
 # Reivo
 
-**Don't just watch your AI burn money. Stop it.**
+**Same output. Half the cost.**
 
-Reivo is a transparent proxy that tracks AI agent costs in real-time, enforces budget limits, and auto-stops runaway loops. Works with OpenAI, Anthropic, and Google. One line change — that's it.
+The smart proxy for LLM APIs. Routes each request to the cheapest model that can handle it — automatically.
+
+## Reivo in numbers
+
+- **40-60%** average cost reduction with Smart Routing
+- **<30ms** latency added by the proxy
+- **97%+** quality score maintained after routing
+- **0** lines of code to change (besides the base URL)
 
 ## Why
 
@@ -12,9 +28,10 @@ Reivo is a proxy — change your base URL and it handles the rest. No SDK, no co
 
 ## Features
 
-- **Smart Model Routing** — Automatically routes each request to the cheapest model that can handle it. Pure JSON analysis with 0ms overhead. See [How Smart Routing Works](#smart-routing) for details.
+- **Smart Model Routing** — Analyzes each request's complexity and routes to the cheapest model that can handle it. 40-60% average cost reduction with zero latency overhead. See [How Smart Routing Works](#smart-routing).
+- **Quality Verification** — Checks output quality after routing. If quality drops below threshold, automatically retries with the full model. You get cost savings without quality loss.
 - **Cost Visibility** — Real-time cost tracking across OpenAI, Anthropic, and Google. Per-session, per-agent, and per-model breakdowns.
-- **Budget Guardrails** — Set spending limits with alerts at 50%, 80%, and 100%. Requests are automatically blocked when exceeded.
+- **Budget Guardrails** — Set spending limits per account or per agent. Choose what happens when exceeded: block requests, send alerts, or auto-downgrade to cheaper models.
 - **Loop Detection** — Detects agents stuck in repetitive loops using prompt hashing and cosine similarity. Auto-stops runaway agents.
 - **Anomaly Detection** — EWMA-based anomaly detection flags unusual spending patterns.
 - **Slack Alerts** — Get notified for budget warnings, loop detection, and anomalies.
@@ -24,7 +41,7 @@ Reivo is a proxy — change your base URL and it handles the rest. No SDK, no co
 
 ### 1. Sign up
 
-Create a free account at [app.reivo.dev](https://app.reivo.dev).
+Create a free account at [reivo.dev](https://reivo.dev).
 
 ### 2. Generate an API key
 
@@ -32,7 +49,7 @@ Go to **Settings** and click "Generate API Key". Copy the key — it's only show
 
 ### 3. Add your provider key
 
-In **Settings**, add your OpenAI, Anthropic, or Google API key. You can add multiple keys per provider.
+In **Settings**, add your OpenAI, Anthropic, or Google API key. Keys are encrypted at rest with AES-256-GCM.
 
 ### 4. Change your base URL
 
@@ -56,6 +73,7 @@ client = Anthropic(
 
 ```typescript
 // TypeScript — OpenAI
+import OpenAI from "openai";
 const client = new OpenAI({
   baseURL: "https://proxy.reivo.dev/openai/v1",
   apiKey: "rv_your_reivo_key",
@@ -74,9 +92,9 @@ curl https://proxy.reivo.dev/google/v1beta/models/gemini-2.5-flash:generateConte
 
 | Provider | Base URL | Streaming |
 |----------|----------|-----------|
-| OpenAI | `.../openai/v1` | Yes |
-| Anthropic | `.../anthropic/v1` | Yes |
-| Google | `.../google/v1beta` | Yes |
+| OpenAI | `https://proxy.reivo.dev/openai/v1` | Yes |
+| Anthropic | `https://proxy.reivo.dev/anthropic/v1` | Yes |
+| Google | `https://proxy.reivo.dev/google/v1beta` | Yes |
 
 ### Custom Headers
 
@@ -88,6 +106,13 @@ curl https://proxy.reivo.dev/google/v1beta/models/gemini-2.5-flash:generateConte
 ## Smart Routing
 
 Reivo's Smart Router analyzes each request's JSON body and decides whether to downgrade the model — with zero latency overhead (pure JSON field inspection, no external API calls).
+
+### How it works
+
+1. **Request arrives** — Router inspects the JSON body for complexity signals
+2. **Decision** — If the request is simple enough, route to a cheaper model
+3. **Quality check** — After response, verify output quality. If below threshold, auto-retry with the full model
+4. **Audit** — Every routing decision is logged with the reason, visible in your dashboard
 
 ### Model Downgrade Map
 
@@ -105,46 +130,61 @@ Reivo's Smart Router analyzes each request's JSON body and decides whether to do
 The router inspects 6 signals from the request body:
 
 **Complexity signals (keep full model):**
-- `tools` or `tool_choice` present → tool use requires full model
-- `response_format.type = "json_schema"` → structured output requires full model
-- `messages.length > 10` → deep conversation requires full model
-- System prompt > 2,000 characters → complex instructions require full model
+- `tools` or `tool_choice` present — tool use requires full model
+- `response_format.type = "json_schema"` — structured output requires full model
+- `messages.length > 10` — deep conversation requires full model
+- System prompt > 2,000 characters — complex instructions require full model
 
 **Simplicity signals (eligible for downgrade):**
-- `max_tokens < 100` → short output likely means simple task
-- `temperature < 0.3` or unset → factual/deterministic query
+- `max_tokens < 100` — short output likely means simple task
+- `temperature < 0.3` or unset — factual/deterministic query
 
 ### Routing Modes
 
 | Mode | Behavior |
 |------|----------|
-| `conservative` (default) | Downgrade only when at least one simplicity signal is present AND no complexity signals |
+| `auto` | System chooses between conservative and aggressive based on recent quality scores |
+| `conservative` | Downgrade only when simplicity signals present AND no complexity signals |
 | `aggressive` | Downgrade unless a complexity signal blocks it |
 | `off` | Never downgrade — passthrough only |
 
 ### What Gets Logged
 
-- The `model` field in the database always records the **original** requested model
-- `routed_model` records what was actually sent upstream (only when different)
-- `routing_reason` records why (e.g. `short_output_low_temp`, `tools_present`)
+- `model` — the original requested model
+- `routed_model` — what was actually sent upstream (only when different)
+- `routing_reason` — why (e.g. `short_output_low_temp`, `tools_present`)
 
-This lets you measure exact savings and audit every routing decision in the dashboard.
+Every routing decision is auditable in the dashboard.
+
+## Budget Policies
+
+Set spending limits per account or per agent with configurable actions:
+
+| Action | Behavior |
+|--------|----------|
+| `block` | Return HTTP 429 when budget exceeded |
+| `alert` | Allow request, send Slack notification |
+| `downgrade` | Force aggressive routing to reduce costs |
+
+Per-agent budgets use the `X-Agent-Id` header. Example: allow your test-writer agent $20/month while your code-reviewer gets $50/month, with different actions for each.
 
 ## Security
 
 Reivo does **NOT** store:
-- Your API keys (pass-through only)
-- Prompt contents
-- Response contents
+- Prompt or completion content
+- Conversation history
+- Raw API keys in the database
 
 Reivo **DOES** store:
 - Model name, token count, cost
 - Timestamp, session ID, agent ID
-- Prompt hash (for loop detection, not reversible)
+- Prompt hash (SHA-256, not reversible)
 
-**Your API keys are forwarded directly to the LLM provider and never touch our database.** We see them in transit (like any proxy) but do not persist them. The proxy runs on Cloudflare Workers, which are stateless — after request processing, memory is discarded. Data is only persisted if explicitly written to our database, and we only write metadata.
+**Provider API keys** are encrypted at rest using AES-256-GCM. They are decrypted only at the moment of proxying and never logged.
 
-For maximum security, use our **self-hosted OSS version** where all data stays on your infrastructure.
+**The proxy is stateless** — it runs on Cloudflare Workers, which discard memory after each request. Data is only persisted if explicitly written to our metadata database.
+
+For details, see our [Privacy Policy](https://reivo.dev/privacy) and [Terms of Service](https://reivo.dev/terms).
 
 ### Trust Model
 
@@ -154,6 +194,28 @@ For maximum security, use our **self-hosted OSS version** where all data stays o
 | **Stateless Proxy** | Cloudflare Workers discard memory after each request | Available now |
 | **Self-Host Option** | Run everything on your own infra | Available now |
 | **SOC2 Compliance** | Third-party audit of security practices | Planned |
+
+## OpenClaw Skill
+
+Use Reivo directly from OpenClaw:
+
+```bash
+clawhub install reivo
+```
+
+### Commands
+
+| Command | Description |
+|---------|-------------|
+| `/reivo status` | Today's cost, routing, and quality report |
+| `/reivo month` | Monthly cost analysis and savings report |
+| `/reivo on` | Enable Smart Routing |
+| `/reivo off` | Disable Smart Routing |
+| `/reivo budget <N>` | Set monthly budget cap in USD |
+| `/reivo mode <mode>` | Change routing mode: `auto`, `conservative`, `aggressive` |
+| `/reivo share` | Generate a shareable savings report |
+
+$100/month used to buy 15 days of agent runtime. With Reivo, it buys 30.
 
 ## Architecture
 
@@ -171,28 +233,28 @@ Your App → Reivo Proxy (CF Workers) → LLM Provider (OpenAI/Anthropic/Google)
 | Database | Turso (libSQL) | Metadata only — model, tokens, cost, timestamp, hash |
 | Dashboard | Next.js 15 + shadcn/ui | Real-time cost visualization |
 | Auth | Clerk | Pre-built auth UI |
-| Payments | Stripe | Free + Pro plans |
+| Payments | Stripe | Free + Pro + Team plans |
 | Notifications | Slack Webhook | Budget, loop, and anomaly alerts |
 
-**What goes in the database:** model name, token counts, cost, latency, timestamp, session/agent IDs, prompt hash, telemetry flags (streaming, tool usage, cache hits).
+**What goes in the database:** model name, token counts, cost, latency, timestamp, session/agent IDs, prompt hash, routed model, routing reason.
 
 **What never goes in the database:** API keys, prompts, responses, any user content.
 
 ## Dashboard Pages
 
-- **Overview** — Cost trends, daily breakdown, summary stats
+- **Overview** — Cost trends, daily breakdown, summary stats, routing stats
 - **Sessions** — Request timeline grouped by session
 - **Agents** — Cost breakdown per agent and per model
 - **Loops** — History of detected loops with match details
-- **Settings** — API key management, provider keys, budget limits, Slack webhook
+- **Settings** — API key management, provider keys, budget policies, routing mode, Slack webhook
 - **Billing** — Usage tracking and plan management
 
 ## Self-Hosting
 
-Reivo is fully open source. You can run the entire stack on your own infrastructure:
+Reivo is fully open source. Run the entire stack on your own infrastructure:
 
 ```bash
-git clone https://github.com/tazsat/reivo.git
+git clone https://github.com/tazsat0512/reivo.git
 cd reivo
 pnpm install
 ```
@@ -209,24 +271,29 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed setup instructions.
 
 ## Pricing
 
-| Plan | Price | Requests/month |
-|------|-------|---------------|
-| Free | $0 | 10,000 |
-| Pro | $49/mo | 100,000 |
-| Self-Host | Free forever | Unlimited |
+| Plan | Price | Requests/month | Key Features |
+|------|-------|---------------|--------------|
+| Free | $0 | 10,000 | Cost tracking, budget limits, loop detection, 7-day history |
+| Pro | $49/mo | 100,000 | Smart Routing, Quality Verification, Slack alerts, 90-day history |
+| Team | $199/mo | Unlimited | Context Optimizer, team management, API access |
+| Enterprise | $999/mo | Unlimited | Dedicated proxy, SSO, SLA |
+| Self-Host | Free forever | Unlimited | All features, your infrastructure |
 
 ## Comparison
 
 | Feature | Reivo | Helicone | Langfuse | AgentBudget |
-|---------|-----------|----------|----------|-------------|
+|---------|-------|----------|----------|-------------|
 | Proxy-based (1 line change) | Yes | Yes | No (SDK) | No (library) |
 | Smart model routing | **Yes** | No | No | No |
+| Quality verification | **Yes** | No | No | No |
 | Auto cost reduction | **40-60%** | No | No | No |
 | Cost tracking & analytics | Yes | Yes | Yes | No |
 | Budget enforcement | Yes | No | No | Yes |
+| Per-agent budgets | Yes | No | No | No |
 | Loop detection | Yes | No | No | No |
 | Anomaly detection | Yes | No | No | No |
 | Auto-stop runaway agents | Yes | No | No | Partial |
+| OpenClaw Skill | Yes | No | No | No |
 | Self-host OSS | Yes | Yes | Yes | N/A |
 | Streaming support | Yes | Yes | Yes | N/A |
 

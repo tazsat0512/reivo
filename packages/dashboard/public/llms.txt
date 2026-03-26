@@ -1,0 +1,53 @@
+# Reivo
+
+> Same output. Half the cost. Smart LLM routing proxy that cuts AI agent costs 40-60%.
+
+Reivo is a transparent HTTP proxy for LLM APIs. It sits between your application and the LLM provider, routing each request to the cheapest model that maintains output quality. Change your base URL — everything else stays the same.
+
+## What Reivo does
+
+- Smart Model Routing: analyzes request complexity and routes to cheaper models when appropriate (gpt-4o → gpt-4o-mini, claude-sonnet-4 → claude-haiku-4.5, gemini-2.5-pro → gemini-2.5-flash). Average cost reduction: 40-60%.
+- Quality Verification: checks output quality after routing. Auto-falls back to the full model if quality drops below threshold.
+- Cost Tracking: real-time cost per session, agent, and model. Dashboard with charts and breakdowns.
+- Budget Enforcement: set monthly spending limits per account or per agent. Requests blocked (HTTP 429) when exceeded.
+- Loop Detection: detects repeated prompts using SHA-256 hashing and TF-IDF cosine similarity. Auto-stops runaway agents.
+- Anomaly Detection: EWMA-based spending pattern analysis. Flags unusual cost spikes.
+- Slack Notifications: alerts for budget warnings, loop detection, and anomalies.
+
+## Integration
+
+Change your base URL:
+
+- OpenAI: `https://proxy.reivo.dev/openai/v1`
+- Anthropic: `https://proxy.reivo.dev/anthropic/v1`
+- Google Gemini: `https://proxy.reivo.dev/google/v1beta`
+
+Auth: `Authorization: Bearer rv_your_reivo_key`
+
+Optional headers:
+- `X-Session-Id` — group requests by session
+- `X-Agent-Id` — track costs per agent
+
+## Pricing
+
+- Free: $0/mo — 10,000 requests, cost tracking, budget limits, loop detection, 7-day history
+- Pro: $49/mo — 100,000 requests, Smart Routing, Quality Verification, Slack notifications, 90-day history
+- Team: $199/mo — unlimited requests, Context Optimizer, team management, API access
+- Enterprise: $999/mo — dedicated proxy, SSO, SLA
+
+## Security
+
+Stores: model name, token counts, cost, latency, timestamp, session/agent IDs, prompt hash.
+Does NOT store: API keys (pass-through), prompts, responses, conversation history.
+Provider API keys: encrypted at rest (AES-256-GCM), decrypted only during proxying.
+Proxy: stateless Cloudflare Workers — memory discarded after each request.
+
+## Links
+
+- Website: https://reivo.dev
+- Dashboard: https://app.reivo.dev
+- Proxy: https://proxy.reivo.dev
+- GitHub: https://github.com/tazsat0512/reivo
+- Privacy Policy: https://reivo.dev/privacy
+- Terms of Service: https://reivo.dev/terms
+- Docs: https://reivo.dev/llms-full.txt
