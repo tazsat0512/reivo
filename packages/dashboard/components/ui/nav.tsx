@@ -1,7 +1,17 @@
 'use client';
 
 import { UserButton } from '@clerk/nextjs';
-import { Activity, BarChart3, Bot, CreditCard, Menu, RotateCcw, Settings, X } from 'lucide-react';
+import {
+  Activity,
+  BarChart3,
+  Bot,
+  CreditCard,
+  Lightbulb,
+  Menu,
+  RotateCcw,
+  Settings,
+  X,
+} from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -14,6 +24,7 @@ const navItems = [
   { href: '/sessions', label: 'Sessions', icon: Activity },
   { href: '/agents', label: 'Agents', icon: Bot },
   { href: '/loops', label: 'Loops', icon: RotateCcw },
+  { href: '/optimization', label: 'Optimization', icon: Lightbulb },
   { href: '/settings', label: 'Settings', icon: Settings },
   { href: '/billing', label: 'Billing', icon: CreditCard },
 ];

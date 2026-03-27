@@ -585,6 +585,133 @@ export const appRouter = t.router({
       return { success: true };
     }),
 
+  // --- Optimization Advisor ---
+  getOptimizations: authedProcedure.query(async ({ ctx }) => {
+    const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+
+    const rows = await db
+      .select({
+        promptHash: requestLogs.promptHash,
+        model: requestLogs.model,
+        inputTokens: requestLogs.inputTokens,
+        outputTokens: requestLogs.outputTokens,
+        costUsd: requestLogs.costUsd,
+        cachedTokens: requestLogs.cachedTokens,
+        hasCacheControl: requestLogs.hasCacheControl,
+        maxTokensSetting: requestLogs.maxTokensSetting,
+        toolCount: requestLogs.toolCount,
+        toolsUsed: requestLogs.toolsUsed,
+      })
+      .from(requestLogs)
+      .where(
+        and(
+          eq(requestLogs.userId, ctx.userId),
+          gte(requestLogs.timestamp, sevenDaysAgo),
+          eq(requestLogs.blocked, false),
+        ),
+      )
+      .limit(1000);
+
+    // Run detection logic inline (same as proxy service)
+    type Row = (typeof rows)[number];
+    type Tip = {
+      type: 'cache' | 'max_tokens' | 'unused_tools';
+      severity: 'low' | 'medium' | 'high';
+      title: string;
+      description: string;
+      estimatedSavingsUsd: number;
+      affectedRequests: number;
+    };
+    const tips: Tip[] = [];
+
+    // 1. Cache detection
+    const hashCounts = new Map<string, { count: number; totalInput: number; model: string }>();
+    for (const r of rows) {
+      const e = hashCounts.get(r.promptHash);
+      if (e) {
+        e.count++;
+        e.totalInput += r.inputTokens;
+      } else {
+        hashCounts.set(r.promptHash, { count: 1, totalInput: r.inputTokens, model: r.model });
+      }
+    }
+    let dupReqs = 0;
+    let cacheSavings = 0;
+    for (const [, e] of hashCounts) {
+      if (e.count < 3) continue;
+      const dups = e.count - 1;
+      dupReqs += dups;
+      // Approximate: cached tokens cost ~50% less
+      cacheSavings += (dups * (e.totalInput / e.count) * 0.5 * 5) / 1_000_000; // rough $5/M avg
+    }
+    if (dupReqs >= 3) {
+      tips.push({
+        type: 'cache',
+        severity: cacheSavings > 1 ? 'high' : cacheSavings > 0.1 ? 'medium' : 'low',
+        title: 'Enable prompt caching',
+        description: `${dupReqs} requests used identical prompts. Use cache_control or reduce redundant system prompts.`,
+        estimatedSavingsUsd: Math.round(cacheSavings * 10000) / 10000,
+        affectedRequests: dupReqs,
+      });
+    }
+
+    // 2. max_tokens waste
+    const withMax = rows.filter((r) => r.maxTokensSetting && r.maxTokensSetting > 0);
+    if (withMax.length >= 5) {
+      let wasteCount = 0;
+      for (const r of withMax) {
+        if (r.outputTokens / r.maxTokensSetting! < 0.2 && r.maxTokensSetting! > 500) wasteCount++;
+      }
+      if (wasteCount >= 5) {
+        const ratio = wasteCount / withMax.length;
+        tips.push({
+          type: 'max_tokens',
+          severity: ratio > 0.5 ? 'high' : ratio > 0.3 ? 'medium' : 'low',
+          title: 'Optimize max_tokens setting',
+          description: `${wasteCount} of ${withMax.length} requests used less than 20% of max_tokens. Lowering it can reduce latency.`,
+          estimatedSavingsUsd: 0,
+          affectedRequests: wasteCount,
+        });
+      }
+    }
+
+    // 3. Unused tools
+    const withTools = rows.filter((r) => r.toolCount && r.toolCount > 0);
+    if (withTools.length >= 5) {
+      let unusedCount = 0;
+      let toolSavings = 0;
+      for (const r of withTools) {
+        const used: string[] = r.toolsUsed ? JSON.parse(r.toolsUsed) : [];
+        if (used.length === 0) {
+          unusedCount++;
+          toolSavings += ((r.toolCount ?? 0) * 200 * 5) / 1_000_000; // ~200 tokens/tool, $5/M avg
+        }
+      }
+      if (unusedCount >= 5) {
+        const ratio = unusedCount / withTools.length;
+        tips.push({
+          type: 'unused_tools',
+          severity: ratio > 0.7 ? 'high' : ratio > 0.4 ? 'medium' : 'low',
+          title: 'Remove unused tool definitions',
+          description: `${unusedCount} of ${withTools.length} requests with tools never called any. Each tool adds ~200 input tokens.`,
+          estimatedSavingsUsd: Math.round(toolSavings * 10000) / 10000,
+          affectedRequests: unusedCount,
+        });
+      }
+    }
+
+    const order = { high: 0, medium: 1, low: 2 };
+    tips.sort((a, b) => order[a.severity] - order[b.severity]);
+    const totalSavings = tips.reduce((s, t) => s + t.estimatedSavingsUsd, 0);
+
+    return {
+      period: '7d',
+      tips,
+      totalEstimatedSavingsUsd: Math.round(totalSavings * 10000) / 10000,
+      analyzedRequests: rows.length,
+    };
+  }),
+
   // --- Routing Stats ---
   getRoutingStats: authedProcedure
     .input(z.object({ days: z.number().default(30) }))

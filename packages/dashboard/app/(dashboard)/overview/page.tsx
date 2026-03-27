@@ -1,5 +1,6 @@
 'use client';
 
+import { Lightbulb } from 'lucide-react';
 import Link from 'next/link';
 import { CostTrendChart } from '../../../components/charts/cost-trend';
 import { DefenseStatus } from '../../../components/defense-status';
@@ -45,6 +46,7 @@ export default function OverviewPage() {
   const { data, isLoading } = trpc.getOverview.useQuery({ days: 30, tz });
   const { data: routingStats } = trpc.getRoutingStats.useQuery({ days: 30 });
   const { data: settings } = trpc.getSettings.useQuery();
+  const { data: optimizations } = trpc.getOptimizations.useQuery();
 
   if (isLoading) {
     return <OverviewSkeleton />;
@@ -62,6 +64,28 @@ export default function OverviewPage() {
       <OnboardingChecklist />
 
       <DefenseStatus />
+
+      {optimizations && optimizations.tips.length > 0 && (
+        <Link href="/optimization">
+          <Card className="border-yellow-500/20 bg-yellow-500/5 transition-colors hover:border-yellow-500/40">
+            <CardContent className="flex items-center gap-4 py-4">
+              <Lightbulb className="h-5 w-5 shrink-0 text-yellow-600" />
+              <div className="flex-1">
+                <p className="text-sm font-medium">
+                  {optimizations.tips.length} optimization{' '}
+                  {optimizations.tips.length === 1 ? 'tip' : 'tips'} detected
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {optimizations.tips.reduce((s, t) => s + t.affectedRequests, 0)} affected requests
+                  {optimizations.totalEstimatedSavingsUsd > 0 &&
+                    ` \u00b7 est. ${formatCost(optimizations.totalEstimatedSavingsUsd)}/week savings`}
+                </p>
+              </div>
+              <span className="shrink-0 text-sm text-muted-foreground">View &rarr;</span>
+            </CardContent>
+          </Card>
+        </Link>
+      )}
 
       {settings?.plan === 'free' && (!routingStats || routingStats.totalRouted === 0) && (
         <Card className="border-primary/20 bg-primary/5">
