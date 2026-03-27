@@ -63,6 +63,7 @@ app.use('*', async (c, next) => {
 app.route('/', health);
 
 // Stats API (auth required, no budget guard)
+app.use('/v1/stats/*', requestLoggerMiddleware, authMiddleware);
 app.use('/v1/stats', requestLoggerMiddleware, authMiddleware);
 app.route('/', stats);
 
