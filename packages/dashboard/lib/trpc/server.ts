@@ -305,7 +305,24 @@ export const appRouter = t.router({
 
   getSettings: authedProcedure.query(async ({ ctx }) => {
     const user = await db.select().from(users).where(eq(users.id, ctx.userId)).limit(1);
-    return user[0] ?? null;
+    if (!user[0]) return null;
+
+    // Count actual requests this month from request_logs
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const monthStartUnix = Math.floor(monthStart.getTime() / 1000);
+
+    const countResult = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(requestLogs)
+      .where(
+        and(eq(requestLogs.userId, ctx.userId), gte(requestLogs.timestamp, monthStartUnix)),
+      );
+
+    return {
+      ...user[0],
+      requestCount: countResult[0]?.count ?? 0,
+    };
   }),
 
   getProviderKeyStatus: authedProcedure.query(async ({ ctx }) => {
