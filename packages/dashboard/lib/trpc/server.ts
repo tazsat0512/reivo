@@ -593,6 +593,7 @@ export const appRouter = t.router({
       .select({
         promptHash: requestLogs.promptHash,
         model: requestLogs.model,
+        agentId: requestLogs.agentId,
         inputTokens: requestLogs.inputTokens,
         outputTokens: requestLogs.outputTokens,
         costUsd: requestLogs.costUsd,
@@ -612,8 +613,6 @@ export const appRouter = t.router({
       )
       .limit(1000);
 
-    // Run detection logic inline (same as proxy service)
-    type Row = (typeof rows)[number];
     type Tip = {
       type: 'cache' | 'max_tokens' | 'unused_tools';
       severity: 'low' | 'medium' | 'high';
@@ -621,29 +620,56 @@ export const appRouter = t.router({
       description: string;
       estimatedSavingsUsd: number;
       affectedRequests: number;
+      details: unknown[];
     };
     const tips: Tip[] = [];
 
-    // 1. Cache detection
-    const hashCounts = new Map<string, { count: number; totalInput: number; model: string }>();
+    // 1. Cache detection — group by promptHash, show per-agent/model breakdown
+    const hashMap = new Map<
+      string,
+      { count: number; totalInput: number; totalCost: number; model: string; agents: Set<string> }
+    >();
     for (const r of rows) {
-      const e = hashCounts.get(r.promptHash);
+      const e = hashMap.get(r.promptHash);
+      const agent = r.agentId ?? '(no agent)';
       if (e) {
         e.count++;
         e.totalInput += r.inputTokens;
+        e.totalCost += r.costUsd;
+        e.agents.add(agent);
       } else {
-        hashCounts.set(r.promptHash, { count: 1, totalInput: r.inputTokens, model: r.model });
+        hashMap.set(r.promptHash, {
+          count: 1,
+          totalInput: r.inputTokens,
+          totalCost: r.costUsd,
+          model: r.model,
+          agents: new Set([agent]),
+        });
       }
     }
     let dupReqs = 0;
     let cacheSavings = 0;
-    for (const [, e] of hashCounts) {
+    const cacheDetails: {
+      model: string;
+      agents: string;
+      duplicateCount: number;
+      avgInputTokens: number;
+      totalCostUsd: number;
+    }[] = [];
+    for (const [, e] of hashMap) {
       if (e.count < 3) continue;
       const dups = e.count - 1;
       dupReqs += dups;
-      // Approximate: cached tokens cost ~50% less
-      cacheSavings += (dups * (e.totalInput / e.count) * 0.5 * 5) / 1_000_000; // rough $5/M avg
+      cacheSavings += (dups * (e.totalInput / e.count) * 0.5 * 5) / 1_000_000;
+      cacheDetails.push({
+        model: e.model,
+        agents: [...e.agents].join(', '),
+        duplicateCount: e.count,
+        avgInputTokens: Math.round(e.totalInput / e.count),
+        totalCostUsd: Math.round(e.totalCost * 10000) / 10000,
+      });
     }
+    cacheDetails.sort((a, b) => b.duplicateCount - a.duplicateCount);
     if (dupReqs >= 3) {
       tips.push({
         type: 'cache',
@@ -652,41 +678,134 @@ export const appRouter = t.router({
         description: `${dupReqs} requests used identical prompts. Use cache_control or reduce redundant system prompts.`,
         estimatedSavingsUsd: Math.round(cacheSavings * 10000) / 10000,
         affectedRequests: dupReqs,
+        details: cacheDetails.slice(0, 10),
       });
     }
 
-    // 2. max_tokens waste
+    // 2. max_tokens waste — group by agent+model
     const withMax = rows.filter((r) => r.maxTokensSetting && r.maxTokensSetting > 0);
     if (withMax.length >= 5) {
-      let wasteCount = 0;
+      const maxMap = new Map<
+        string,
+        {
+          agent: string;
+          model: string;
+          count: number;
+          wasteCount: number;
+          totalMaxTokens: number;
+          totalOutput: number;
+        }
+      >();
       for (const r of withMax) {
-        if (r.outputTokens / r.maxTokensSetting! < 0.2 && r.maxTokensSetting! > 500) wasteCount++;
+        const agent = r.agentId ?? '(no agent)';
+        const key = `${agent}:${r.model}`;
+        const e = maxMap.get(key);
+        const isWaste = r.outputTokens / r.maxTokensSetting! < 0.2 && r.maxTokensSetting! > 500;
+        if (e) {
+          e.count++;
+          if (isWaste) e.wasteCount++;
+          e.totalMaxTokens += r.maxTokensSetting!;
+          e.totalOutput += r.outputTokens;
+        } else {
+          maxMap.set(key, {
+            agent,
+            model: r.model,
+            count: 1,
+            wasteCount: isWaste ? 1 : 0,
+            totalMaxTokens: r.maxTokensSetting!,
+            totalOutput: r.outputTokens,
+          });
+        }
       }
-      if (wasteCount >= 5) {
-        const ratio = wasteCount / withMax.length;
+      let totalWaste = 0;
+      const maxDetails: {
+        agent: string;
+        model: string;
+        requests: number;
+        avgMaxTokens: number;
+        avgOutputTokens: number;
+        usagePercent: number;
+      }[] = [];
+      for (const [, e] of maxMap) {
+        if (e.wasteCount < 2) continue;
+        totalWaste += e.wasteCount;
+        maxDetails.push({
+          agent: e.agent,
+          model: e.model,
+          requests: e.wasteCount,
+          avgMaxTokens: Math.round(e.totalMaxTokens / e.count),
+          avgOutputTokens: Math.round(e.totalOutput / e.count),
+          usagePercent: Math.round((e.totalOutput / e.totalMaxTokens) * 100),
+        });
+      }
+      maxDetails.sort((a, b) => b.requests - a.requests);
+      if (totalWaste >= 5) {
+        const ratio = totalWaste / withMax.length;
         tips.push({
           type: 'max_tokens',
           severity: ratio > 0.5 ? 'high' : ratio > 0.3 ? 'medium' : 'low',
           title: 'Optimize max_tokens setting',
-          description: `${wasteCount} of ${withMax.length} requests used less than 20% of max_tokens. Lowering it can reduce latency.`,
+          description: `${totalWaste} of ${withMax.length} requests used less than 20% of max_tokens. Lowering it can reduce latency.`,
           estimatedSavingsUsd: 0,
-          affectedRequests: wasteCount,
+          affectedRequests: totalWaste,
+          details: maxDetails.slice(0, 10),
         });
       }
     }
 
-    // 3. Unused tools
+    // 3. Unused tools — group by agent+model, show tool counts
     const withTools = rows.filter((r) => r.toolCount && r.toolCount > 0);
     if (withTools.length >= 5) {
+      const toolMap = new Map<
+        string,
+        { agent: string; model: string; total: number; unused: number; totalToolCount: number }
+      >();
       let unusedCount = 0;
       let toolSavings = 0;
       for (const r of withTools) {
         const used: string[] = r.toolsUsed ? JSON.parse(r.toolsUsed) : [];
-        if (used.length === 0) {
+        const agent = r.agentId ?? '(no agent)';
+        const key = `${agent}:${r.model}`;
+        const isUnused = used.length === 0;
+        const e = toolMap.get(key);
+        if (e) {
+          e.total++;
+          if (isUnused) e.unused++;
+          e.totalToolCount += r.toolCount ?? 0;
+        } else {
+          toolMap.set(key, {
+            agent,
+            model: r.model,
+            total: 1,
+            unused: isUnused ? 1 : 0,
+            totalToolCount: r.toolCount ?? 0,
+          });
+        }
+        if (isUnused) {
           unusedCount++;
-          toolSavings += ((r.toolCount ?? 0) * 200 * 5) / 1_000_000; // ~200 tokens/tool, $5/M avg
+          toolSavings += ((r.toolCount ?? 0) * 200 * 5) / 1_000_000;
         }
       }
+      const toolDetails: {
+        agent: string;
+        model: string;
+        totalRequests: number;
+        unusedRequests: number;
+        avgToolsSent: number;
+        unusedPercent: number;
+      }[] = [];
+      for (const [, e] of toolMap) {
+        if (e.unused < 2) continue;
+        toolDetails.push({
+          agent: e.agent,
+          model: e.model,
+          totalRequests: e.total,
+          unusedRequests: e.unused,
+          avgToolsSent: Math.round(e.totalToolCount / e.total),
+          unusedPercent: Math.round((e.unused / e.total) * 100),
+        });
+      }
+      toolDetails.sort((a, b) => b.unusedRequests - a.unusedRequests);
       if (unusedCount >= 5) {
         const ratio = unusedCount / withTools.length;
         tips.push({
@@ -696,6 +815,7 @@ export const appRouter = t.router({
           description: `${unusedCount} of ${withTools.length} requests with tools never called any. Each tool adds ~200 input tokens.`,
           estimatedSavingsUsd: Math.round(toolSavings * 10000) / 10000,
           affectedRequests: unusedCount,
+          details: toolDetails.slice(0, 10),
         });
       }
     }
