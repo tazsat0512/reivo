@@ -1,0 +1,185 @@
+/**
+ * Fetch model pricing from LiteLLM's community-maintained database
+ * and generate packages/shared/src/pricing.ts
+ *
+ * Usage: npx tsx scripts/sync-pricing.ts
+ */
+
+const LITELLM_URL =
+  'https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json';
+
+// Providers we support — only include these
+const SUPPORTED_PROVIDERS = new Set([
+  'openai',
+  'anthropic',
+  'vertex_ai-language-models',
+  'gemini',
+]);
+
+// Map LiteLLM provider names to our provider labels
+const PROVIDER_LABELS: Record<string, string> = {
+  openai: 'OpenAI',
+  anthropic: 'Anthropic',
+  'vertex_ai-language-models': 'Google',
+  gemini: 'Google',
+};
+
+// Models that LiteLLM may drop but users still reference.
+// These are only added if LiteLLM doesn't include them.
+const MANUAL_OVERRIDES: Record<string, { input: number; output: number; provider: string }> = {
+  'o1-mini': { input: 3.0, output: 12.0, provider: 'openai' },
+  'o1-mini-2024-09-12': { input: 3.0, output: 12.0, provider: 'openai' },
+  'claude-3-5-sonnet-20241022': { input: 3.0, output: 15.0, provider: 'anthropic' },
+  'claude-3-5-sonnet-20240620': { input: 3.0, output: 15.0, provider: 'anthropic' },
+  'claude-3-5-haiku-20241022': { input: 0.8, output: 4.0, provider: 'anthropic' },
+  'claude-3-sonnet-20240229': { input: 3.0, output: 15.0, provider: 'anthropic' },
+  'claude-4-5-sonnet-20250620': { input: 3.0, output: 15.0, provider: 'anthropic' },
+  'claude-4-5-haiku-20250620': { input: 0.8, output: 4.0, provider: 'anthropic' },
+  'claude-sonnet-4-6-20250826': { input: 3.0, output: 15.0, provider: 'anthropic' },
+  'claude-opus-4-6-20250826': { input: 15.0, output: 75.0, provider: 'anthropic' },
+  'gemini-1.5-pro': { input: 1.25, output: 5.0, provider: 'gemini' },
+  'gemini-1.5-pro-002': { input: 1.25, output: 5.0, provider: 'gemini' },
+  'gemini-1.5-flash': { input: 0.075, output: 0.3, provider: 'gemini' },
+  'gemini-1.5-flash-002': { input: 0.075, output: 0.3, provider: 'gemini' },
+  'gemini-1.0-pro': { input: 0.5, output: 1.5, provider: 'gemini' },
+};
+
+// Models that use provider/ prefix in LiteLLM — strip it
+function normalizeModelName(key: string): string | null {
+  // Skip entries with provider prefixes we don't want (bedrock/, azure/, etc.)
+  if (key.includes('/')) return null;
+  return key;
+}
+
+interface LiteLLMEntry {
+  input_cost_per_token?: number;
+  output_cost_per_token?: number;
+  litellm_provider?: string;
+  mode?: string;
+}
+
+async function main() {
+  console.log('Fetching LiteLLM pricing data...');
+  const res = await fetch(LITELLM_URL);
+  if (!res.ok) {
+    console.error(`Failed to fetch: ${res.status}`);
+    process.exit(1);
+  }
+
+  const data = (await res.json()) as Record<string, LiteLLMEntry>;
+  console.log(`Fetched ${Object.keys(data).length} models total`);
+
+  // Filter and transform
+  const entries: { name: string; provider: string; input: number; output: number }[] = [];
+
+  for (const [key, entry] of Object.entries(data)) {
+    if (!entry.litellm_provider || !SUPPORTED_PROVIDERS.has(entry.litellm_provider)) continue;
+    if (entry.mode !== 'chat') continue;
+    if (!entry.input_cost_per_token || !entry.output_cost_per_token) continue;
+
+    const name = normalizeModelName(key);
+    if (!name) continue;
+
+    const inputPerMillion = Math.round(entry.input_cost_per_token * 1_000_000 * 1000) / 1000;
+    const outputPerMillion = Math.round(entry.output_cost_per_token * 1_000_000 * 1000) / 1000;
+
+    // Skip if both are 0
+    if (inputPerMillion === 0 && outputPerMillion === 0) continue;
+
+    entries.push({
+      name,
+      provider: entry.litellm_provider,
+      input: inputPerMillion,
+      output: outputPerMillion,
+    });
+  }
+
+  // Add manual overrides for models missing from LiteLLM
+  const existingNames = new Set(entries.map((e) => e.name));
+  for (const [name, override] of Object.entries(MANUAL_OVERRIDES)) {
+    if (!existingNames.has(name)) {
+      entries.push({ name, provider: override.provider, input: override.input, output: override.output });
+    }
+  }
+
+  // Sort by provider then name
+  entries.sort((a, b) => {
+    const provOrder = Object.keys(PROVIDER_LABELS);
+    const pa = provOrder.indexOf(a.provider);
+    const pb = provOrder.indexOf(b.provider);
+    if (pa !== pb) return pa - pb;
+    return a.name.localeCompare(b.name);
+  });
+
+  console.log(`Included ${entries.length} models (OpenAI/Anthropic/Google chat models)`);
+
+  // Group by provider (merge gemini into vertex_ai-language-models as "Google")
+  const grouped = new Map<string, typeof entries>();
+  for (const e of entries) {
+    // Normalize google providers into one group
+    const groupKey = e.provider === 'gemini' ? 'vertex_ai-language-models' : e.provider;
+    const list = grouped.get(groupKey) ?? [];
+    list.push(e);
+    grouped.set(groupKey, list);
+  }
+
+  // Generate TypeScript
+  const lines: string[] = [
+    '// Auto-generated by scripts/sync-pricing.ts — do not edit manually',
+    `// Source: LiteLLM (${new Date().toISOString().slice(0, 10)})`,
+    '',
+    'export interface ModelPricing {',
+    '  inputPerMillion: number;',
+    '  outputPerMillion: number;',
+    '}',
+    '',
+    '// Prices in USD per million tokens',
+    'export const PRICING_TABLE: Record<string, ModelPricing> = {',
+  ];
+
+  for (const [provider, models] of grouped) {
+    const label = PROVIDER_LABELS[provider] ?? provider;
+    lines.push(`  // ${label}`);
+    for (const m of models) {
+      lines.push(`  '${m.name}': { inputPerMillion: ${m.input}, outputPerMillion: ${m.output} },`);
+    }
+    lines.push('');
+  }
+
+  lines.push('};');
+  lines.push('');
+  lines.push('// Fallback pricing for unknown models');
+  lines.push('export const FALLBACK_PRICING: ModelPricing = {');
+  lines.push('  inputPerMillion: 10.0,');
+  lines.push('  outputPerMillion: 30.0,');
+  lines.push('};');
+  lines.push('');
+  lines.push('export function getModelPricing(model: string): ModelPricing {');
+  lines.push('  return PRICING_TABLE[model] ?? FALLBACK_PRICING;');
+  lines.push('}');
+  lines.push('');
+  lines.push(
+    'export function calculateCost(model: string, inputTokens: number, outputTokens: number): number {',
+  );
+  lines.push('  const pricing = getModelPricing(model);');
+  lines.push('  return (');
+  lines.push('    (inputTokens / 1_000_000) * pricing.inputPerMillion +');
+  lines.push('    (outputTokens / 1_000_000) * pricing.outputPerMillion');
+  lines.push('  );');
+  lines.push('}');
+  lines.push('');
+
+  const output = lines.join('\n');
+
+  // Write to pricing.ts
+  const path = new URL('../packages/shared/src/pricing.ts', import.meta.url);
+  const fs = await import('node:fs');
+  fs.writeFileSync(path, output, 'utf-8');
+
+  console.log(`Written to packages/shared/src/pricing.ts (${entries.length} models)`);
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});
