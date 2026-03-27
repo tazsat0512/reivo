@@ -905,6 +905,9 @@ LLM Provider (OpenAI / Anthropic / Google)`}
             <Link href="/terms" className="hover:text-foreground">
               Terms
             </Link>
+            <Link href="/commercial-disclosure" className="hover:text-foreground">
+              特定商取引法
+            </Link>
             <a href="mailto:hello@reivo.dev" className="hover:text-foreground">
               Contact
             </a>

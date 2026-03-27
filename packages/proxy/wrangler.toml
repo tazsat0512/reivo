@@ -10,14 +10,15 @@ ENVIRONMENT = "production"
 # Set your own KV namespace IDs here
 [[kv_namespaces]]
 binding = "BUDGET_KV"
-id = ""
-preview_id = ""
+id = "48329a7d34d94c24925470592eef9c7a"
+preview_id = "314e368481a64e6292bad479102c832e"
 
 [[kv_namespaces]]
 binding = "USERS_KV"
-id = ""
-preview_id = ""
+id = "53c96e1637ed493c9f3e9ed1d1d89ad1"
+preview_id = "816efdacc3d443a78c5d134455bc4d30"
 
 # Secrets (set via `wrangler secret put`)
 # TURSO_DATABASE_URL
 # TURSO_AUTH_TOKEN
+# ENCRYPTION_KEY
