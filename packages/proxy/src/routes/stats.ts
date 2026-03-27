@@ -3,6 +3,7 @@ import { and, eq, gte, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { createDb } from '../db/client.js';
 import { requestLogs } from '../db/schema.js';
+import { analyzeOptimizations } from '../services/optimization-advisor.js';
 import type { Env, UserRecord } from '../types/index.js';
 
 type HonoEnv = {
@@ -114,6 +115,46 @@ stats.get('/v1/stats', async (c) => {
     topAgents,
     plan: user.plan,
     budgetLimitUsd: user.budgetLimitUsd,
+  });
+});
+
+stats.get('/v1/stats/optimizations', async (c) => {
+  const user = c.get('user');
+  const db = createDb(c.env.TURSO_DATABASE_URL, c.env.TURSO_AUTH_TOKEN);
+
+  const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+
+  const rows = await db
+    .select({
+      promptHash: requestLogs.promptHash,
+      model: requestLogs.model,
+      inputTokens: requestLogs.inputTokens,
+      outputTokens: requestLogs.outputTokens,
+      costUsd: requestLogs.costUsd,
+      cachedTokens: requestLogs.cachedTokens,
+      hasCacheControl: requestLogs.hasCacheControl,
+      maxTokensSetting: requestLogs.maxTokensSetting,
+      toolCount: requestLogs.toolCount,
+      toolsUsed: requestLogs.toolsUsed,
+    })
+    .from(requestLogs)
+    .where(
+      and(
+        eq(requestLogs.userId, user.id),
+        gte(requestLogs.timestamp, sevenDaysAgo),
+        eq(requestLogs.blocked, false),
+      ),
+    )
+    .limit(1000);
+
+  const tips = analyzeOptimizations(rows);
+  const totalSavings = tips.reduce((sum, t) => sum + t.estimatedSavingsUsd, 0);
+
+  return c.json({
+    period: '7d',
+    tips,
+    totalEstimatedSavingsUsd: Math.round(totalSavings * 10000) / 10000,
+    analyzedRequests: rows.length,
   });
 });
 
