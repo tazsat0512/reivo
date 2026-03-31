@@ -17,6 +17,14 @@ export function Footer() {
             GitHub
           </a>
           <a
+            href="https://github.com/tazsat0512/reivo-guard"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:text-foreground"
+          >
+            reivo-guard (OSS)
+          </a>
+          <a
             href="https://clawhub.org/skills/reivo"
             target="_blank"
             rel="noopener noreferrer"

@@ -39,6 +39,9 @@ export default async function LandingPage() {
             <a href="#openclaw" className="text-muted-foreground hover:text-foreground">
               OpenClaw Skill
             </a>
+            <a href="#slack" className="text-muted-foreground hover:text-foreground">
+              Slack Setup
+            </a>
             <a href="#pricing" className="text-muted-foreground hover:text-foreground">
               Pricing
             </a>
@@ -226,25 +229,7 @@ export default async function LandingPage() {
             <div className="mt-12 grid gap-4 md:grid-cols-2">
               <div className="overflow-hidden rounded-lg border bg-card">
                 <div className="border-b px-4 py-2 text-sm font-medium text-muted-foreground">
-                  With SDK (recommended)
-                </div>
-                <pre className="overflow-x-auto p-6 text-sm">
-                  <code>
-                    {`pip install reivo openai
-
-from reivo import Reivo
-
-client = Reivo("rv_your_key").openai()
-res = client.chat.completions.create(
-    model="gpt-4o",
-    messages=[{"role": "user", "content": "Hello"}],
-)`}
-                  </code>
-                </pre>
-              </div>
-              <div className="overflow-hidden rounded-lg border bg-card">
-                <div className="border-b px-4 py-2 text-sm font-medium text-muted-foreground">
-                  Without SDK (base URL only)
+                  Python (OpenAI)
                 </div>
                 <pre className="overflow-x-auto p-6 text-sm">
                   <code>
@@ -256,6 +241,26 @@ client = OpenAI(
 )
 res = client.chat.completions.create(
     model="gpt-4o",
+    messages=[{"role": "user", "content": "Hello"}],
+)`}
+                  </code>
+                </pre>
+              </div>
+              <div className="overflow-hidden rounded-lg border bg-card">
+                <div className="border-b px-4 py-2 text-sm font-medium text-muted-foreground">
+                  Python (Anthropic)
+                </div>
+                <pre className="overflow-x-auto p-6 text-sm">
+                  <code>
+                    {`from anthropic import Anthropic
+
+client = Anthropic(
+    base_url="https://proxy.reivo.dev/anthropic/v1",
+    api_key="rv_your_key",
+)
+res = client.messages.create(
+    model="claude-sonnet-4",
+    max_tokens=1024,
     messages=[{"role": "user", "content": "Hello"}],
 )`}
                   </code>
@@ -508,14 +513,14 @@ res = client.chat.completions.create(
 
               {/* What you can do */}
               <div className="rounded-lg border bg-card p-6">
-                <h3 className="text-lg font-semibold">Talk to Your Agent</h3>
+                <h3 className="text-lg font-semibold">Skill Commands</h3>
                 <div className="mt-4 space-y-3">
                   {[
-                    ['"How much did Reivo save me?"', 'Saved $127.30 this month (60% reduction)'],
-                    ['"How much am I spending?"', 'Cost breakdown by model and agent'],
-                    ['"Set my budget to $50"', 'Enforces monthly spending limit'],
-                    ['"Which agent costs the most?"', 'Agent-by-agent cost comparison'],
-                    ['"Open dashboard"', 'Link to full analytics dashboard'],
+                    ['/reivo month', 'Monthly cost and savings summary'],
+                    ['/reivo defense', 'Budget usage, loops detected, blocked requests'],
+                    ['/reivo optimize', 'Cost optimization tips with estimated savings'],
+                    ['/reivo budget 50', 'Set a $50/month spending cap'],
+                    ['/reivo slack <url>', 'Enable Slack alerts for budget and loops'],
                   ].map(([cmd, desc]) => (
                     <div key={cmd} className="flex gap-3">
                       <div className="shrink-0">
@@ -579,6 +584,8 @@ LLM Provider (OpenAI / Anthropic / Google)`}
                       ['Smart model routing', false, false, false, 'star'],
                       ['Quality verification', false, false, false, 'star'],
                       ['Auto cost reduction', false, false, false, '40-60%'],
+                      ['Optimization tips', false, false, false, true],
+                      ['Slack alerts', false, false, false, true],
                       ['OpenClaw skill', false, false, false, true],
                       ['Open source', true, true, true, true],
                     ] as [
@@ -686,6 +693,107 @@ LLM Provider (OpenAI / Anthropic / Google)`}
           </div>
         </section>
 
+        {/* Slack Integration Guide */}
+        <section id="slack" className="border-t py-20">
+          <div className="mx-auto max-w-5xl px-6">
+            <h2 className="text-center text-3xl font-bold">Slack Alerts in 3 Minutes</h2>
+            <p className="mt-4 text-center text-muted-foreground">
+              Get notified instantly when budgets are hit or agents go haywire.
+            </p>
+
+            <div className="mt-12 grid gap-6 md:grid-cols-3">
+              <div className="rounded-lg border bg-card p-6">
+                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-xl font-bold text-primary">
+                  1
+                </div>
+                <h3 className="mt-4 font-semibold text-center">Create a Slack App</h3>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Go to{' '}
+                  <a
+                    href="https://api.slack.com/apps"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary underline"
+                  >
+                    api.slack.com/apps
+                  </a>{' '}
+                  and click <strong>&quot;Create New App&quot;</strong> &rarr;{' '}
+                  <strong>&quot;From scratch&quot;</strong>. Name it anything (e.g. &quot;Reivo
+                  Alerts&quot;) and pick your workspace.
+                </p>
+              </div>
+
+              <div className="rounded-lg border bg-card p-6">
+                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-xl font-bold text-primary">
+                  2
+                </div>
+                <h3 className="mt-4 font-semibold text-center">Enable Incoming Webhooks</h3>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  In the sidebar, click <strong>&quot;Incoming Webhooks&quot;</strong> and toggle it{' '}
+                  <strong>On</strong>. Then click{' '}
+                  <strong>&quot;Add New Webhook to Workspace&quot;</strong> and choose the channel
+                  you want alerts in.
+                </p>
+              </div>
+
+              <div className="rounded-lg border bg-card p-6">
+                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-xl font-bold text-primary">
+                  3
+                </div>
+                <h3 className="mt-4 font-semibold text-center">Paste the URL in Reivo</h3>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Copy the Webhook URL (starts with{' '}
+                  <code className="rounded bg-muted px-1 text-xs">https://hooks.slack.com/...</code>
+                  ). Paste it into <strong>Settings &rarr; Slack Webhook URL</strong> in your Reivo
+                  dashboard. Done!
+                </p>
+              </div>
+            </div>
+
+            {/* Example notification preview */}
+            <div className="mt-12 mx-auto max-w-lg">
+              <p className="mb-3 text-center text-sm font-medium text-muted-foreground">
+                What you&apos;ll see in Slack:
+              </p>
+              <div className="overflow-hidden rounded-lg border bg-white shadow-sm">
+                <div className="flex items-center gap-2 border-b bg-gray-50 px-4 py-2">
+                  <div className="h-4 w-4 rounded bg-[#611f69]" />
+                  <span className="text-xs font-medium text-gray-700">#reivo-alerts</span>
+                </div>
+                <div className="border-l-4 border-l-[#f0ad4e] p-4">
+                  <p className="text-sm font-bold text-gray-900">&#9888;&#65039; Budget Warning</p>
+                  <p className="mt-1 text-sm text-gray-700">Budget usage at 80%: $40.00 / $50.00</p>
+                  <div className="mt-2 font-mono text-xs text-gray-600">
+                    ████████████████░░░░ <strong>80%</strong> used
+                  </div>
+                  <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-gray-600">
+                    <div>
+                      <strong>Used:</strong> $40.00
+                    </div>
+                    <div>
+                      <strong>Limit:</strong> $50.00
+                    </div>
+                    <div>
+                      <strong>Model:</strong> gpt-4o
+                    </div>
+                    <div>
+                      <strong>Provider:</strong> openai
+                    </div>
+                  </div>
+                  <div className="mt-3 flex gap-2">
+                    <span className="rounded bg-gray-100 px-3 py-1 text-xs font-medium text-gray-700">
+                      Open Dashboard
+                    </span>
+                    <span className="rounded bg-gray-100 px-3 py-1 text-xs font-medium text-gray-700">
+                      Manage Budget
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
         {/* Pricing */}
         <section id="pricing" className="border-t py-20">
           <div className="mx-auto max-w-5xl px-6">
@@ -767,7 +875,12 @@ LLM Provider (OpenAI / Anthropic / Google)`}
               </div>
 
               <div className="rounded-lg border bg-card p-6">
-                <h3 className="text-lg font-semibold">Team</h3>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-lg font-semibold">Team</h3>
+                  <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                    Coming Soon
+                  </span>
+                </div>
                 <p className="mt-1 text-sm text-muted-foreground">
                   For organizations running multiple agents
                 </p>
@@ -777,9 +890,6 @@ LLM Provider (OpenAI / Anthropic / Google)`}
                 <ul className="mt-6 space-y-2 text-sm">
                   <li className="flex items-center gap-2">
                     <span className="text-green-600">&#10003;</span> Everything in Pro
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <span className="font-bold text-primary">&#9733;</span> Context Optimizer
                   </li>
                   <li className="flex items-center gap-2">
                     <span className="text-green-600">&#10003;</span> Unlimited requests
@@ -798,7 +908,7 @@ LLM Provider (OpenAI / Anthropic / Google)`}
                   href="#contact"
                   className="mt-6 block rounded-md border py-2 text-center text-sm font-medium hover:bg-accent"
                 >
-                  Talk to Us
+                  Join Waitlist
                 </a>
               </div>
             </div>
@@ -893,6 +1003,28 @@ LLM Provider (OpenAI / Anthropic / Google)`}
                 Star on GitHub
               </a>
             </div>
+          </div>
+        </section>
+
+        {/* Open Source / Self-Host */}
+        <section className="border-t py-16">
+          <div className="mx-auto max-w-3xl px-6 text-center">
+            <h2 className="text-2xl font-bold">Prefer to self-host?</h2>
+            <p className="mt-4 text-muted-foreground">
+              <strong>reivo-guard</strong> is our open-source guardrail engine — budget enforcement, loop detection, anomaly detection, and more. Zero dependencies. Works with any LLM provider.
+            </p>
+            <div className="mt-6 flex flex-col items-center justify-center gap-3 sm:flex-row">
+              <code className="rounded-md bg-muted px-4 py-2 text-sm">pip install reivo-guard</code>
+              <code className="rounded-md bg-muted px-4 py-2 text-sm">npm install reivo-guard</code>
+            </div>
+            <a
+              href="https://github.com/tazsat0512/reivo-guard"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-6 inline-block text-sm font-medium text-primary hover:underline"
+            >
+              View on GitHub &rarr;
+            </a>
           </div>
         </section>
       </main>
